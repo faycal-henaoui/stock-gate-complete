@@ -17,7 +17,6 @@ COPY requirements.txt .
 # Note: Installing paddlepaddle-gpu is large. 
 # For standard cloud hosting (cpu), use paddlepaddle
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install paddlepaddle==2.6.0  
 
 # Copy the entire project context (respecting .dockerignore)
 COPY . .
