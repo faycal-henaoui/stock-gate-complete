@@ -1,0 +1,72 @@
+\chapter{État de l'art et Contexte du Projet}
+
+\section{Contexte et Problématique}
+
+\subsection{La saisie manuelle en entreprise}
+La gestion des factures fournisseurs est une étape critique de la chaîne d'approvisionnement (Supply Chain). Traditionnellement, lorsqu'une entreprise reçoit une facture, un opérateur doit :
+\begin{enumerate}
+    \item Lire le document papier ou PDF.
+    \item Identifier les informations pertinentes (Qui est le fournisseur ? Quelle est la date ? Quels sont les articles ?).
+    \item Saisir manuellement ces données dans l'ERP ou le logiciel de gestion de stock.
+\end{enumerate}
+
+Cette méthode présente plusieurs limites majeures :
+\begin{itemize}
+    \item \textbf{Coût élevé} : Le temps passé par les employés représente un coût salarial direct.
+    \item \textbf{Délais de traitement} : Le "time-to-record" (temps d'enregistrement) peut prendre plusieurs jours.
+    \item \textbf{Erreurs de saisie} : On estime qu'environ 1\% à 4\% des saisies manuelles contiennent des erreurs, ce qui fausse les inventaires et la comptabilité.
+\end{itemize}
+
+\subsection{Objectif du projet}
+L'objectif est de supprimer cette friction en proposant un système "Scan \& Validate". L'utilisateur n'a plus qu'à scanner la facture, et le système pré-remplit les champs. L'humain passe d'un rôle de "saisie" à un rôle de "validation", beaucoup moins coûteux et plus valorisant.
+
+\section{Définitions Clés}
+
+Pour bien appréhender la solution, il est nécessaire de définir les concepts techniques mobilisés :
+
+\begin{itemize}
+    \item \textbf{OCR (Optical Character Recognition)} : La reconnaissance optique de caractères est la technologie permettant de convertir une image contenant du texte (pixels) en texte codé utilisable par la machine (ASCII/Unicode).
+    \item \textbf{NLP (Natural Language Processing)} : Le traitement automatique du langage naturel désigne les techniques permettant à une machine de comprendre, interpréter et manipuler le langage humain. Dans notre projet, nous l'utilisons pour le rapprochement de produits (matching flou) et la correction sémantique.
+    \item \textbf{Dématérialisation} : Processus de remplacement des supports d'information matériels (papier) par des fichiers informatiques.
+\end{itemize}
+
+\section{Classification des Documents}
+
+Dans le domaine de l'extraction d'information, on distingue trois types de documents :
+
+\begin{enumerate}
+    \item \textbf{Documents Structurés} (ex: Formulaires CERFA, Chèques, QCM) : La mise en page est fixe et connue à l'avance. L'extraction est simple (coordonnées fixes).
+    \item \textbf{Documents Non-Structurés} (ex: Emails, Lettres, Articles) : Le texte est libre, sans structure spatiale rigide. L'analyse repose entièrement sur le NLP.
+    \item \textbf{Documents Semi-Structurés} (ex: \textbf{Factures}, Tickets de caisse) : C'est le cas complexe qui nous intéresse.
+    \begin{itemize}
+        \item Les informations clés (Total, Date) sont toujours présentes, mais leur \textbf{position varie} d'un fournisseur à l'autre.
+        \item Les tableaux ont un nombre de lignes variable.
+        \item C'est pour cela que les méthodes traditionnelles échouent souvent.
+    \end{itemize}
+\end{enumerate}
+
+\section{État de l'Art des Solutions d'Extraction}
+
+Comment extraire des données de factures ? Voici l'évolution des approches :
+
+\subsection{Approche "Template Matching" (Modèles)}
+\begin{itemize}
+    \item \textbf{Principe} : On dessine des zones sur l'image pour chaque fournisseur (ex: "Pour le fournisseur X, la date est toujours aux coordonnées [100, 200]").
+    \item \textbf{Avantage} : Très précis si le format ne change jamais.
+    \item \textbf{Inconvénient} : Impossible à maintenir. Si l'on a 500 fournisseurs, il faut créer 500 modèles. Si un fournisseur change sa mise en page, le système casse.
+\end{itemize}
+
+\subsection{Approche par Règles (Regex \& Mots-clés)}
+\begin{itemize}
+    \item \textbf{Principe} : On convertit tout le document en texte brut, puis on cherche des motifs avec des expressions régulières (ex: chercher \texttt{JJ/MM/AAAA} pour la date).
+    \item \textbf{Avantage} : Plus souple que les templates.
+    \item \textbf{Inconvénient} : On perd l'information spatiale. Si une facture contient deux dates (Date de facture et Date de livraison), les Regex ne savent souvent pas distinguer laquelle est laquelle sans le contexte visuel (ce qui est à gauche ou au-dessus).
+\end{itemize}
+
+\subsection{Approche Moderne : Deep Learning \& Layout Analysis}
+C'est l'approche que nous avons privilégiée. Elle combine :
+\begin{itemize}
+    \item Des réseaux de neurones profonds (\textbf{Deep Learning}) pour détecter et lire le texte même déformé ou bruité.
+    \item Une analyse de la \textbf{disposition spatiale} (Layout Analysis) pour comprendre que "Total" est un titre et que "100.00 \$" qui se trouve à sa droite est la valeur associée.
+    \item Cette méthode est \textbf{générique} : elle fonctionne sur des factures jamais vues auparavant, sans avoir besoin de créer de "template" spécifique.
+\end{itemize}

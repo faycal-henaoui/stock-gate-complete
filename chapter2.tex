@@ -1,0 +1,77 @@
+\chapter{Fondements Théoriques}
+
+Ce chapitre présente les bases théoriques et mathématiques nécessaires à la compréhension des technologies mises en œuvre dans notre solution.
+
+\section{Vision par Ordinateur (Computer Vision)}
+
+La vision par ordinateur est le domaine de l'intelligence artificielle qui permet aux machines "de voir" et d'analyser des images. Avant de pouvoir lire du texte sur une facture, l'image brute doit subir plusieurs traitements.
+
+\subsection{Prétraitement d'images}
+Les factures scannées souffrent souvent de défauts (bruit, faible contraste, rotation).
+Une image numérique est perçue par la machine comme une matrice $f(x, y)$ où chaque valeur représente l'intensité du pixel.
+
+\begin{itemize}
+    \item \textbf{Conversion en niveaux de gris} : Réduction de la complexité en passant de 3 canaux (RGB) à 1 canal.
+    \item \textbf{Filtrage et Réduction de Bruit} : Application de convolutions (ex: Flou Gaussien) pour lisser le grain du papier numérisé :
+    \begin{equation}
+    (f * G)(x, y) = \sum_{i,j} f(i, j) G(x-i, y-j)
+    \end{equation}
+    \item \textbf{Binarisation} : Transformation de l'image en noir et blanc pur (seuillage) pour séparer le texte du fond.
+    \item \textbf{Normalisation} : Redimensionnement à une taille standard (ex: $960 \times 960$) pour l'entrée du réseau.
+\end{itemize}
+
+\section{Deep Learning pour l'OCR}
+
+L'OCR moderne ne repose plus sur la reconnaissance de formes géométriques simples, mais sur l'apprentissage profond (Deep Learning).
+
+\subsection{Réseaux de Neurones Convolutifs (CNN)}
+Les CNN (Convolutional Neural Networks) sont la base de la vision moderne. Ils utilisent des filtres (kernels) qui parcourent l'image pour extraire des caractéristiques visuelles (bords, coins, textures) de plus en plus complexes.
+Dans notre projet, les CNN sont utilisés lors de l'étape de \textbf{Détection de Texte} (pour localiser où se trouve le texte sur la page).
+
+\subsection{Réseaux Récurrents et Transformers}
+Une fois le texte localisé, il faut le reconnaître (lire la séquence de caractères).
+
+\begin{itemize}
+    \item \textbf{Limites des RNN / LSTM} : Traditionnellement, les réseaux récurrents (Long Short-Term Memory) lisent l'image de gauche à droite, tranche par tranche. Cette approche séquentielle est sensible au bruit local et peine à corriger les erreurs de lecture si un caractère est physiquement endommagé.
+    
+    \item \textbf{Supériorité de SVTR (Global Context)} : Notre modèle SVTR (Single Visual Model for Scene Text Recognition) \cite{svtr} repose sur l'architecture Transformer. Contrairement aux RNNs, il utilise des mécanismes d'attention pour analyser \textbf{l'ensemble de la ligne de texte simultanément} (Global Context). Cette capacité permet au modèle de déduire un caractère flou en se basant sur le contexte global du mot, ce qui est crucial pour les factures où les chiffres sont souvent denses et serrés.
+    
+    \item \textbf{Stratégie de Fine-tuning} : Les modèles génériques sont souvent entraînés sur des documents bureautiques propres. Pour ce projet, nous avons fine-tuné SVTR sur un dataset augmenté contenant des polices "dot-matrix" (impression matricielle) et thermiques, typiques des reçus de caisse, afin d'améliorer la robustesse face aux caractères dégradés ou pixelisés.
+\end{itemize}
+
+\section{Traitement du Langage Naturel (NLP)}
+
+Une fois le texte extrait, il faut lui donner du sens, notamment pour relier les produits de la facture à notre base de données interne.
+
+\subsection{Mesures de distance textuelle (Levenshtein)}
+Pour corriger les fautes de frappe ou d'OCR (ex: "Iphone" lu comme "lphone"), nous utilisons la \textbf{Distance de Levenshtein \cite{levenshtein}}. C'est un algorithme mathématique qui compte le nombre minimum de modifications (ajout, suppression, substitution) pour transformer une chaîne de caractères A en chaîne B.
+\begin{itemize}
+    \item $d(A, B)$ faible $\rightarrow$ forte similarité.
+\end{itemize}
+
+\subsection{Vectorisation et Similarité Cosinus}
+Pour aller plus loin que la simple orthographe, nous utilisons la sémantique.
+\begin{itemize}
+    \item \textbf{Word Embeddings} : Chaque mot est transformé en un vecteur numérique dans un espace multidimensionnel, inspiré des travaux fondateurs sur \textbf{Word2Vec \cite{word2vec}}. Cela permet au modèle de capturer le sens : deux mots proches sémantiquement (ex: "Portable" et "Laptop") auront des vecteurs mathématiquement proches.
+    \item \textbf{Similarité Cosinus} : Mesure l'angle entre deux vecteurs. Si l'angle est proche de 0 (Cosinus proche de 1), les produits sont considérés comme identiques.
+\end{itemize}
+
+\begin{equation}
+Similarity(A, B) = \cos(\theta) = \frac{A \cdot B}{\|A\| \|B\|}
+\end{equation}
+
+C'est grâce à ces méthodes que notre fonction de \textit{Smart Matching} peut suggérer le bon produit même si le libellé sur la facture est différent de celui en stock.
+
+\section{Architecture Web et Microservices}
+
+Notre solution n'est pas un script isolé, mais un système distribué.
+
+\subsection{API REST (Representational State Transfer)}
+Nous utilisons une architecture REST pour la communication entre le Frontend (React) et le Backend (Python/Node).
+\begin{itemize}
+    \item \textbf{Stateless} : Chaque requête contient toutes les informations nécessaires.
+    \item \textbf{Verbes HTTP} : Utilisation standardisée (POST pour envoyer l'image, GET pour récupérer l'historique).
+\end{itemize}
+
+\subsection{Format JSON (JavaScript Object Notation)}
+Le JSON est le standard pour l'échange de données. Notre pipeline OCR convertit l'image (donnée non structurée) en un objet JSON (donnée structurée) contenant des clés claires : \texttt{\{"total": 120.00, "date": "2023-10-01"\}}.

@@ -1,0 +1,149 @@
+\chapter{Conception et Réalisation}
+
+Ce chapitre détaille l'architecture technique de notre solution et les choix d'implémentation pour passer de la théorie (Chapitre 2) à une application fonctionnelle.
+
+\section{Architecture Globale du Système}
+
+Notre système repose sur une architecture en \textbf{Microservices} composée de trois briques principales :
+
+\begin{enumerate}
+    \item \textbf{Frontend (React + Vite)} : L'interface utilisateur permettant le scan, la visualisation et la validation des données.
+    \item \textbf{Backend Intermédiaire (Node.js/Express)} : Gère la logique métier, la base de données PostgreSQL (Stocks, Historique) et le lien entre le client et l'IA.
+    \item \textbf{Moteur OCR (Python/FastAPI)} : Un service dédié exclusivement au traitement d'images lourd (IA), exposé via une API REST sur le port 8000.
+\end{enumerate}
+
+\textbf{Flux de données (Pipeline)} :
+\texttt{Image} $\rightarrow$ \texttt{API Node.js} $\rightarrow$ \texttt{API Python} $\rightarrow$ \texttt{Extraction OCR} $\rightarrow$ \texttt{JSON Structuré} $\rightarrow$ \texttt{Validation Utilisateur} $\rightarrow$ \texttt{Base de Données}.
+
+\section{Le Pipeline OCR (Python)}
+
+Le cœur intelligent du projet est un script Python modulaire (\texttt{pipeline.py}) qui exécute 5 étapes séquentielles :
+
+\subsection{Étape 1 : Acquisition \& Conversion}
+Le système accepte des images (JPG, PNG) ou des PDF. Si un PDF est reçu, il est converti en image haute résolution (300 DPI) via la librairie \texttt{PyMuPDF} (Fitz) pour garantir une bonne lisibilité pour l'IA.
+
+\subsection{Étape 2 : Détection de Texte (Text Detection)}
+Nous utilisons le modèle \textbf{DBNet (Differentiable Binarization) \cite{dbnet}}.
+Contrairement aux anciennes méthodes, DBNet est capable de détecter du texte orienté (courbé ou en biais) et sépare très bien les lignes de texte proches, ce qui est crucial pour les tableaux denses des factures.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{detected_invoice.jpg}
+    \caption{Visualisation de la détection de texte (Green Bounding Boxes) sur une facture réelle. Le modèle identifie précisément les blocs de texte indépendamment de leur taille.}
+    \label{fig:detection}
+\end{figure}
+
+\subsection{Étape 3 : Reconnaissance de Texte (Text Recognition)}
+Pour lire le contenu des boîtes détectées, nous utilisons \textbf{SVTR (Scene Text Recognition with a Single Visual Model) \cite{svtr}}.
+
+\subsubsection{Justification du Choix : SVTR vs CRNN (RNN/LSTM)}
+Dans les systèmes d'OCR traditionnels de type CRNN (Convolutional Recurrent Neural Network), l'image est découpée en tranches verticales lues séquentiellement par un réseau récurrent (LSTM).
+Cette approche présente deux défauts majeurs pour notre cas d'usage (Factures) :
+\begin{enumerate}
+    \item \textbf{Vision Tunnel} : Le LSTM ne voit que le contexte immédiat (avant/après). Il échoue souvent si les caractères sont très espacés ou si la ligne est courbe.
+    \item \textbf{Lenteur Séquentielle} : Le traitement caractère par caractère empêche la parallélisation complète sur GPU.
+\end{enumerate}
+
+À l'inverse, \textbf{SVTR} (Transformer) traite l'image de la ligne de texte en un seul bloc (Global Context). Grâce au mécanisme d'attention, il "voit" le mot entier d'un coup. Si un caractère est taché, il le déduit grâce à la forme globale du mot.
+
+\subsubsection{Stratégie d'Entraînement (Fine-tuning)}
+Nous sommes partis du modèle pré-entraîné \texttt{SVTR\_tiny} (entraîné sur MJSynth et SynthText) que nous avons adapté à notre domaine via la technique de \textit{Transfer Learning}.
+Pour garantir la performance de 96\% observée, nous avons enrichi le dataset d'entraînement avec :
+\begin{itemize}
+    \item \textbf{626 images} issues du dataset public SROIE (Tickets de caisse).
+    \item \textbf{400 images} synthétiques générées avec des perturbations spécifiques (bruit thermique, froissement) pour robustifier le modèle.
+\end{itemize}
+Le modèle a été entraîné sur \textbf{100 époques} avec un mécanisme d'\textit{Early Stopping} pour prévenir le surapprentissage.
+
+\textbf{Configuration des Hyperparamètres :}
+\begin{itemize}
+    \item \textbf{Optimiseur} : AdamW avec un \textit{weight decay} de $0.05$ pour éviter l'overfitting.
+    \item \textbf{Learning Rate} : Initialisé à $10^{-4}$ avec un \textit{Cosine Learning Rate Decay} pour converger doucement.
+    \item \textbf{Batch Size} : 64 (adapté au GPU disponible).
+    \item \textbf{Fonction de Perte (Loss)} : CTC Loss (\textit{Connectionist Temporal Classification}), idéale pour les séquences de texte de longueur variable sans alignement caractère-par-caractère.
+    \item \textbf{Data Augmentation} : RandomRotation ($\pm 10^{\circ}$), GaussianBlur et RandomNoise pour simuler la mauvaise qualité des tickets de caisse.
+\end{itemize}
+
+\subsection{Étape 4 : Reconstruction du Layout}
+L'OCR brute renvoie une liste de mots en vrac. Nous avons développé un algorithme (\texttt{reconstruct.py}) qui :
+\begin{enumerate}
+    \item Trie les boîtes de texte par ordonnée (Y) puis abscisse (X).
+    \item Fusionne les mots proches pour reformer des phrases ou des lignes de tableau.
+\end{enumerate}
+
+\subsection{Étape 5 : Extraction Sémantique (Information Extraction)}
+C'est le cœur de l'algorithme qui donne du sens aux données brutes. Notre approche "Spatio-Sémantique" se distingue par deux innovations majeures :
+
+\paragraph{1. Ancrage par Distance Euclidienne Pondérée}
+Contrairement aux outils classiques qui cherchent simplement le mot le plus proche, notre algorithme pondère les distances pour privilégier l'alignement naturel de lecture.
+Pour un mot ancre $A(x_a, y_a)$ (ex: "TOTAL") et un candidat $C(x_c, y_c)$ (ex: "120.00"), nous calculons une distance $D$ modifiée :
+\begin{equation}
+D(A, C) = \sqrt{ \alpha(x_c - x_a - \text{offset})^2 + \beta(y_c - y_a)^2 }
+\end{equation}
+où $\beta \gg \alpha$. Cette pondération pénalise fortement les écarts verticaux, forçant l'algorithme à chercher la valeur sur la même ligne (à droite) plutôt que sur la ligne du dessous, réduisant ainsi les faux positifs.
+
+\paragraph{2. Extraction de Tableaux Dynamique (Multi-lignes)}
+La complexité majeure des factures réside dans les tableaux où la description d'un produit peut s'étaler sur plusieurs lignes, sans séparateur physique.
+Notre module \texttt{DynamicTable} résout ce problème par une analyse de densité verticale et de seuillage Y :
+
+\begin{itemize}
+    \item \textbf{Projection Verticale} : Il détecte d'abord les en-têtes (Quantité, Désignation, Prix) et définit des "couloirs" (Ranges X) pour chaque colonne.
+    \item \textbf{Regroupement par Seuil Y (Y-Thresholding)} : Pour fusionner les lignes brisées, nous appliquons un seuil adaptatif $\Delta y$. Si la distance verticale entre deux blocs de texte est inférieure à la moitié de la hauteur moyenne des caractères ($y_{i+1} - y_i < 0.5 \times h_{mean}$), ils sont considérés comme appartenant à la même ligne logique.
+    \item \textbf{Logique de "Row Merging"} : Si une ligne détectée contient du texte dans la colonne \textit{Désignation} mais que la colonne \textit{Prix} est vide, le système fusionne automatiquement ce texte avec la ligne précédente.
+\end{itemize}
+
+
+\section{Module de Smart Matching (Stratégie de Réconciliation)}
+
+Une fois les données extraites (ex: "HP Pav 15"), le défi est de les lier universellement à un produit unique du stock (ex: "HP Pavilion 15-dk1000", ID: \texttt{PROD\_8842}).
+Cette étape est critique car les fournisseurs utilisent des dénominations non standardisées.
+
+\subsection{Architecture Hybride (Mémoire + IA)}
+Nous avons conçu un pipeline de décision en deux temps pour optimiser à la fois la vitesse et la flexibilité.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{smart_matching_logic.png}
+    \caption{Flux de décision de l'algorithme de Smart Matching. Le système apprend des validations humaines pour enrichir sa "Mémoire" (Cache).}
+    \label{fig:smart_matching}
+\end{figure}
+
+\subsubsection{Niveau 1 : La Mémoire Explicite (Cache Mapping)}
+Avant de tenter de "deviner", le système interroge une table de correspondance \texttt{product\_mappings}.
+\begin{itemize}
+    \item \textbf{Principe} : Si l'utilisateur a déjà validé par le passé que "Ecran Dell 24" correspond à l'ID \texttt{PROD\_202}, ce lien est stocké.
+    \item \textbf{Avantage} : Temps de réponse immédiat (O(1)) et précision de 100\% pour les achats récurrents.
+\end{itemize}
+
+\subsubsection{Niveau 2 : Recherche de Similarité (Fuzzy Search)}
+Si le produit est inconnu, nous activons le moteur de recherche vectoriel/flou.
+Pour classer les candidats du stock, nous calculons un score composite $S$ :
+
+\begin{equation}
+S(Query, Target) = \alpha \cdot \text{Levenshtein\_Ratio}(Q, T) + \beta \cdot \text{Jaccard\_Token}(Q, T)
+\end{equation}
+
+Ce niveau agit comme un filtres rapide, réduisant des milliers de produits à top-5 candidats pertinents.
+
+\subsubsection{Niveau 3 : Validation Sémantique par LLM (Gemini 1.5)}
+Pour résoudre le problème du "Fossé Sémantique" (ex: associer "HP Display" à "HP Monitor"), nous intégrons un \textbf{Grand Modèle de Langage (LLM)}.
+\begin{itemize}
+    \item \textbf{Entrée} : L'article scanné et les Top-5 candidats du Niveau 2.
+    \item \textbf{Processus} : Le LLM (Google Gemini via API) analyse le contexte sémantique et choisit le meilleur candidat avec une justification logique.
+    \item \textbf{Sortie} : Un ID unique confirmé ou \texttt{null} si aucune correspondance n'est fiable.
+\end{itemize}
+
+Ce modèle hybride (Algorithmique rapide + IA Générative précise) permet d'obtenir une précision quasi-humaine à un coût très faible (l'IA n'est appelée que si nécessaire).
+
+Le choix final de l'utilisateur est toujours capturé pour alimenter le Niveau 1 (Boucle d'apprentissage).
+
+\section{Stack Technique}
+
+\begin{itemize}
+    \item \textbf{Langages} : Python 3.10 (IA), JavaScript (Web), SQL.
+    \item \textbf{Frameworks} : FastAPI (API IA) \cite{fastapi}, Express.js (Backend), React (Frontend) \cite{react}.
+    \item \textbf{Bibliothèques IA} : PaddleOCR \cite{paddleocr}, OpenCV \cite{opencv}.
+    \item \textbf{Modèle Génératif (LLM)} : Google Gemini 1.5 Flash (via API) \cite{gemini}.
+    \item \textbf{Base de Données} : PostgreSQL.
+    \item \textbf{Outils} : Virtualenv (Environnement Python), Axios (Requêtes HTTP).
+\end{itemize}

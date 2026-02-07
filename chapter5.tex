@@ -1,0 +1,109 @@
+\chapter{Commercialisation et Modèle Économique}
+
+Au-delà de la prouesse technique, ce projet a été conçu dès le départ avec une vision entrepreneuriale. L'objectif n'est pas seulement de créer un algorithme performant, mais de répondre à un besoin critique du marché algérien : la transformation numérique de la comptabilité.
+Ce chapitre détaille notre stratégie pour transformer ce prototype en un produit commercial viable (SaaS).
+
+\section{Le Modèle SaaS (Software as a Service)}
+
+Nous avons choisi de distribuer notre solution sous forme de \textbf{SaaS} (Logiciel en tant que Service) plutôt qu'une licence perpétuelle classique.
+
+\subsection{Pourquoi ce choix ?}
+\begin{itemize}
+    \item \textbf{Accessibilité Immédiate} : Aucun logiciel à installer pour le client. Tout se passe sur le navigateur, ce qui est crucial pour les PME qui n'ont pas de service informatique dédié.
+    \item \textbf{Mises à jour Continues} : L'IA évolue vite. Le modèle SaaS nous permet de déployer des améliorations de l'OCR (Step 3) ou du Smart Matching (Step 5) instantanément pour tous les clients, sans intervention sur leurs machines.
+    \item \textbf{Revenu Récurrent} : Pour nous, c'est l'assurance d'une stabilité financière (Cash-flow) permettant de réinvestir dans des serveurs GPU plus puissants.
+\end{itemize}
+
+\section{Étude de Marché et Cible}
+
+\subsection{Le Problème (Pain Point)}
+En Algérie, une PME traite en moyenne 300 à 1000 factures par mois. La saisie manuelle d'une facture prend environ 3 à 5 minutes.
+\begin{itemize}
+    \item \textbf{Coût Caché} : 500 factures $\times$ 4 min = 33 heures de travail/mois.
+    \item \textbf{Erreur Humaine} : Erreurs de saisie fréquentes (TVA, Totaux).
+\end{itemize}
+
+\subsection{La Cible (Target Market)}
+Notre solution vise deux segments prioritaires :
+\begin{enumerate}
+    \item \textbf{Les Cabinets Comptables} : Ils traitent des milliers de factures pour le compte de tiers. Notre outil leur permettrait de doubler leur capacité de traitement sans embaucher.
+    \item \textbf{Les Grandes PME/ETI} : Celles qui possèdent un ERP (Odoo, Sage) mais qui saisissent encore "à la main".
+\end{enumerate}
+
+\section{Analyse Financière (En Dinars Algériens)}
+
+\subsection{Coûts de Développement (CAPEX)}
+L'investissement initial pour atteindre la version v1.0 (MVP) est estimé comme suit :
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|r|}
+\hline
+\textbf{Poste de Dépense} & \textbf{Détail} & \textbf{Coût Estimé (DZD)} \\
+\hline
+Développement & 2 Ingénieurs $\times$ 6 mois (Base: 80k DA) & 960,000 DA \\
+\hline
+Infrastructure Dev & Location GPU Cloud (AWS/Azure) & 150,000 DA \\
+\hline
+Licence & Datasets & 50,000 DA \\
+\hline
+\textbf{TOTAL INVESTISSEMENT} & & \textbf{1,160,000 DA} \\
+\hline
+\end{tabular}
+\caption{Budget prévisionnel de développement initial.}
+\label{tab:capex}
+\end{table}
+
+\subsection{Coûts Opérationnels (OPEX)}
+Pour faire tourner le service en production pour 50 clients :
+\begin{itemize}
+    \item \textbf{Hébergement GPU} : ~40,000 DA / mois (Serveur GPU Entry-level).
+    \item \textbf{Maintenance \& Support} : ~100,000 DA / mois.
+\end{itemize}
+
+\section{Stratégie de Pricing et Rentabilité}
+
+Nous proposons une grille tarifaire agressive pour pénétrer le marché, basée sur le volume de documents.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|c|}
+\hline
+\rowcolor{gray!20} \textbf{Plan} & \textbf{Volume Mensuel} & \textbf{Prix (HT) / Mois} \\
+\hline
+\textbf{Freelance} & Jusqu'à 100 factures & 3,500 DA \\
+\hline
+\textbf{PME Standard} & Jusqu'à 1,000 factures & 12,000 DA \\
+\hline
+\textbf{Cabinet (Pro)} & Jusqu'à 5,000 factures & 45,000 DA \\
+\hline
+\textbf{Enterprise} & Illimité + API & Sur Devis \\
+\hline
+\end{tabular}
+\caption{Grille tarifaire proposée (Abonnement Mensuel).}
+\label{tab:pricing}
+\end{table}
+
+\subsection{Projection de Revenus}
+Hypothèse conservatrice pour l'Année 1 :
+\begin{itemize}
+    \item \textbf{Acquisition} : 5 Cabinets Comptables (Plan Pro) + 10 PME (Plan Standard).
+    \item \textbf{Revenu Mensuel (MRR)} : $(5 \times 45,000) + (10 \times 12,000) = 225,000 + 120,000 = \textbf{345,000 DA/mois}$.
+\end{itemize}
+
+\subsection{Seuil de Rentabilité}
+Avec des coûts fixes mensuels de 140,000 DA (Serveur + Maintenance) et un revenu de 345,000 DA :
+\begin{itemize}
+    \item \textbf{Marge Nette Mensuelle} : $345,000 - 140,000 = \textbf{205,000 DA}$.
+    \item \textbf{Retour sur Investissement (ROI)} : Le coût initial (1,16M DA) est rapidement amorti dès l'atteinte de la vitesse de croisière.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{financial_projections.png}
+    \caption{Projections Financières (Année 1). Gauche: La montée en charge des revenus couvre les coûts fixes dès le 3ème mois. Droite: La trésorerie devient positive (ROI atteint) avant la fin de la première année, même avec un scénario de croissance progressive.}
+    \label{fig:financial_projections}
+\end{figure}
+
+\section{Conclusion du Chapitre}
+Ce modèle économique démontre que notre solution est non seulement viable mais hautement rentable. Avec un coût d'entrée faible pour les clients (moins cher qu'un stagiaire) et une marge confortable pour nous, le potentiel de croissance sur le marché national est immense.

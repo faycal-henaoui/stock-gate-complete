@@ -1,0 +1,15 @@
+# Ignore these files when building the Docker image
+.git
+.vscode
+venv
+node_modules
+__pycache__
+website
+stock-gate
+debug_out
+*.log
+*.tmp
+*.jpg
+*.png
+*.pdf
+Real_invoices

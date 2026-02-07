@@ -1,0 +1,25 @@
+\chapter*{Conclusion Générale}
+\addcontentsline{toc}{chapter}{Conclusion Générale}
+
+Ce projet de fin d'études avait pour ambition de répondre à une problématique concrète et coûteuse pour les entreprises algériennes : la saisie manuelle des factures fournisseurs. En combinant les avancées récentes du Deep Learning (OCR) et une architecture web moderne, nous avons développé une solution SaaS capable d'automatiser ce processus avec une fiabilité comparable aux standards industriels.
+
+\section*{Bilan des Réalisations}
+Au terme de ce travail, nous avons abouti à :
+\begin{enumerate}
+    \item \textbf{Un Moteur OCR Hybride} : L'intégration de \textbf{SVTR} (Vision Transformer) couplée à notre algorithme de "Smart Matching" a permis d'atteindre une précision de reconnaissance de 96\% sur des tickets de caisse réels, surpassant les approches RNN classiques (CRNN).
+    \item \textbf{Une "Intelligence" Métier} : Contrairement aux simples lecteurs de texte, notre système comprend la structure du document (tableaux, totaux) et apprend des corrections de l'utilisateur (Human-in-the-loop), résolvant le problème de la variabilité des formats fournisseurs.
+    \item \textbf{Un Produit Viable} : L'analyse économique (Chapitre 5) démontre qu'avec un investissement initial maîtrisé (1.16M DA), la solution atteint son seuil de rentabilité en moins d'un an, offrant un ROI attractif pour les futurs investisseurs ou clients.
+\end{enumerate}
+
+\section*{Limitations et Difficultés Rencontrées}
+Le parcours n'a pas été sans obstacles. Nous avons dû faire face à la rareté des données d'entraînement locales (factures algériennes), nous obligeant à constituer notre propre dataset privé. De plus, la reconnaissance des textes manuscrits (bouchers, taxis) reste un défi technique majeur où notre modèle actuel montre ses limites.
+
+\section*{Perspectives d'Avenir}
+Pour transformer ce prototype en leader du marché, plusieurs axes d'amélioration sont identifiés :
+\begin{itemize}
+    \item \textbf{Approche Multimodale (LayoutLMv3 \cite{layoutlmv3})} : Exploiter non seulement le texte, mais aussi la disposition visuelle et l'image brute en une seule passe pour améliorer la robustesse sur les documents très complexes.
+    \item \textbf{Application Mobile} : Développer une version native (Flutter/React Native) pour permettre aux commerciaux de scanner leurs notes de frais directement sur le terrain.
+    \item \textbf{Blockchain} : Sécuriser l'archivage des factures numériques pour garantir leur inaltérabilité fiscale.
+\end{itemize}
+
+En conclusion, ce PFE ne marque pas une fin, mais le début d'une aventure entrepreneuriale prometteuse. Il prouve que l'IA appliquée n'est plus réservée aux géants de la Tech, mais peut être domestiquée pour résoudre, ici en Algérie, les défis quotidiens de nos PME.

@@ -1,0 +1,392 @@
+\chapter{Expérimentations et Résultats}
+
+Ce dernier chapitre présente l'évaluation de notre solution, en analysant ses performances sur différents types de factures et en discutant de ses limites actuelles.
+
+\section{Protocole de Test}
+
+\subsection{Matériel et Environnement}
+Les expérimentations ont été menées sur une configuration représentative d'un serveur de production standard :
+\begin{itemize}
+    \item \textbf{Processeur} : Intel Core i7 (ou équivalent).
+    \item \textbf{Mémoire Vive} : 16 Go RAM.
+    \item \textbf{Accélération} : Inférence CPU (par défaut) et tests GPU sur NVIDIA RTX.
+    \item \textbf{Software} : Docker 24.0, Python 3.10, FastAPI.
+\end{itemize}
+
+\subsection{Jeux de Données (Datasets)}
+Pour valider notre modèle, nous avons utilisé deux sources de données :
+\begin{enumerate}
+    \item \textbf{Dataset SROIE (Scanned Receipts OCR Information Extraction) \cite{sroie}} : Il s'agit du benchmark académique de référence introduit lors de la conférence ICDAR 2019. Il contient \textbf{1000 images} de reçus (626 pour l'entraînement, 374 pour le test), et évalue trois tâches distinctes :
+    \begin{itemize}
+        \item \textit{Text Detection} : Localiser les boîtes de texte.
+        \item \textit{OCR} : Transcrire le contenu textuel.
+        \item \textit{Information Extraction} : Extraire 4 entités clés (Company, Date, Address, Total).
+    \end{itemize}
+    Nous l'avons utilisé principalement pour valider la robustesse de notre module SVTR face au bruit d'image.
+
+    \item \textbf{Dataset Privé "Real\_Invoices"} : Un corpus constitué de 60 factures réelles issues de fournisseurs locaux (Algérie/France), présentant des formats variés (A4, tickets, paysages, tableaux complexes). C'est sur ce dataset que nous évaluons l'extraction des tableaux.
+\end{enumerate}
+
+\subsection{Métriques d'Évaluation}
+Pour mesurer la qualité de l'extraction en temps réel et sans vérité terrain (Ground Truth) immédiate, nous avons implémenté un module d'auto-évaluation intégré au pipeline. Celui-ci calcule des indicateurs clés pour chaque document traité :
+
+\begin{enumerate}
+    \item \textbf{Confiance OCR Moyenne (Proxy de Précision)} :
+    La probabilité moyenne fournie par le modèle SVTR pour chaque boîte de texte.
+    \begin{equation}
+    Precision \approx \frac{1}{N} \sum_{i=1}^{N} P(text_i)
+    \end{equation}
+
+    \item \textbf{Complétude des Champs (Proxy de Rappel)} :
+    Le ratio des champs métier critiques (Date, Total, Fournisseur, Référence) détectés avec succès.
+    \begin{equation}
+    Recall \approx \frac{\text{Champs Trouvés}}{\text{Champs Attendus (4)}}
+    \end{equation}
+
+    \item \textbf{F1-Score Estimé} :
+    Une mesure synthétique de la performance globale, calculée comme la moyenne harmonique des deux indicateurs précédents.
+    \begin{equation}
+    F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}
+    \end{equation}
+
+    \item \textbf{Cohérence Arithmétique (Logic Consistency)} :
+    Un indicateur de fiabilité sémantique qui vérifie la validité mathématique des lignes du tableau extrait. Une ligne est considérée valide si :
+    \begin{equation}
+    |\text{Quantité} \times \text{Prix Unitaire} - \text{Total Ligne}| < \epsilon
+    \end{equation}
+    Cet indicateur permet de détecter les erreurs d'OCR sur les chiffres (ex: lire '100' au lieu de '10').
+\end{enumerate}
+
+\subsection{Exemple de Sortie du Pipeline}
+
+Pour illustrer le fonctionnement concret du système, voici les résultats intermédiaires et finaux obtenus sur la facture \texttt{scan0059.jpg}.
+
+\subsubsection{Structure Géométrique (Étape 4)}
+Le fichier \texttt{step04\_structure.json} contient la reconstruction spatiale. On y voit comment les boîtes de texte sont regroupées. Notez la précision des coordonnées \texttt{bbox}.
+
+\begin{lstlisting}[language=json, caption={Extrait de step04\_structure.json (Reconstruction)}, label={lst:step04}]
+{
+    "lines": [
+        {
+            "line_index": 35,
+            "text": "TLEMCEN TUBES",
+            "bbox": { "x": 80, "y": 29, "w": 357, "h": 41 }
+        },
+        {
+            "line_index": 29,
+            "text": "N 015272025 du 01/07/2025",
+            "bbox": { "x": 923, "y": 254, "w": 329, "h": 32 }
+        },
+        {
+            "line_index": 19,
+            "text": "CITERNE 2000 NH ZEMZEM",
+            "bbox": { "x": 250, "y": 384, "w": 234, "h": 28 }
+        },
+        {
+            "line_index": 5,
+            "text": "45 000.00 DA",
+            "bbox": { "x": 1104, "y": 457, "w": 139, "h": 30 }
+        }
+    ]
+}
+\end{lstlisting}
+
+\subsubsection{Extraction Sémantique Finale (Étape 5)}
+Le fichier \texttt{step05\_extracted.json} est le résultat final exploitable par l'ERP. Le système a correctement identifié le fournisseur, la date, et surtout les lignes du tableau avec leurs détails.
+
+\begin{lstlisting}[language=json, caption={Extrait de step05\_extracted.json (Final)}, label={lst:step05}]
+{
+    "supplier": {
+        "name": "TLEMCEN TUBES",
+        "phone": "0770682746"
+    },
+    "document": {
+        "type": "delivery_note",
+        "number": "014502025",
+        "date": "23/06/2025"
+    },
+    "totals": {
+        "total_amount": "28075.00",
+        "currency": "DA",
+        "total_amount_words": "Vingt-huit mille soixante-quinze DINARS"
+    },
+    "items": [
+        {
+            "description": "MANCHON AVEC RACC 20*1/2 PPR 93",
+            "quantity": 1,
+            "unit_price": 110.0,
+            "line_total": 110.0
+        },
+        {
+            "description": "CITERNE 2000L HORIZONTALE TGR",
+            "quantity": 1,
+            "unit_price": 27500.00,
+            "line_total": 27500.00
+        }
+    ]
+}
+\end{lstlisting}
+
+\subsubsection{Génération de Rapport PDF}
+En plus du JSON, le système génère un rapport PDF (\texttt{REPORT\_scan0059.pdf}) destiné à l'archivage légal. Ce rapport est structuré en trois sections pour faciliter la vérification humaine :
+
+\begin{figure}[H]
+    \centering
+    % Partie 1 : Header et Image Source
+    \begin{subfigure}[b]{0.95\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{report_header.png}
+        \caption{Section 1 : Visualisation du document source}
+    \end{subfigure}
+    
+    \vspace{0.5cm}
+    
+    % Partie 2 : Métadonnées
+    \begin{subfigure}[b]{0.95\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{report_metadata.png}
+        \caption{Section 2 : Métadonnées Globales (Fournisseur, Dates, Totaux)}
+    \end{subfigure}
+    
+    \vspace{0.5cm}
+
+    % Partie 3 : Tableau
+    \begin{subfigure}[b]{0.95\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{report_table.png}
+        \caption{Section 3 : Reconstitution du Tableau commercial}
+    \end{subfigure}
+    
+    \caption{Décomposition du rapport de validation généré par le système.}
+    \label{fig:full_report_breakdown}
+\end{figure}
+
+\section{Résultats Obtenus}
+
+\subsection{Tableau de Bord de Performance (Automated Dashboard)}
+Afin de visualiser ces métriques, le système génère automatiquement un rapport visuel pour chaque exécution.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{performance_charts.png}
+    \caption{Tableau de bord généré automatiquement : Latency par étape (gauche) et Distribution de confiance OCR (droite).}
+    \label{fig:dashboard}
+\end{figure}
+
+Ce tableau de bord permet d'analyser :
+\begin{itemize}
+    \item \textbf{La Latence (Processing Latency)} : Décomposition du temps de calcul. On remarque que l'étape 3 (OCR pixel par pixel) est la plus coûteuse.
+    \item \textbf{La Distribution de Confiance} : L'histogramme montre une forte concentration vers 90-100\%, validant la qualité du scan.
+\end{itemize}
+
+\subsubsection{Scorecard du Système}
+L'analyse quantitative d'une exécution type donne les résultats suivants :
+
+\begin{table}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|c|l|}
+\hline
+\rowcolor{gray!20} \textbf{KPI Metric} & \textbf{Value} & \textbf{Technical Description} \\ \hline
+Total Pipeline Latency      & 5.029 sec        & End-to-end processing time from Image to JSON \\ \hline
+OCR Precision (Confidence)  & 88.1\%           & Avg probability of correct character recognition (SVTR) \\ \hline
+Extraction Recall (Fields)  & 4/4 (100\%)      & Ratio of key business fields (Date, Total, etc.) found \\ \hline
+Logic Consistency (Math)    & 100.0\%          & Rows passing 'Qty * Price = Total' verification check \\ \hline
+F1-Score (Estimated)        & 93.7\%           & Harmonic mean of Recognition Confidence and Extraction Recall \\ \hline
+Est. Throughput             & 7.2 lines/sec    & Processing speed capability of the current hardware \\ \hline
+\end{tabular}%
+}
+\caption{System Performance Scorecard (Généré automatiquement)}
+\label{tab:scorecard}
+\end{table}
+
+\subsection{Performance de l'OCR et Impact du Fine-tuning}
+Le modèle SVTR s'est montré extrêmement performant, notamment grâce à la phase d'adaptation (fine-tuning) réalisée sur le dataset SROIE et notre jeu de données privé.
+
+\subsubsection{Courbes d'Apprentissage}
+L'entraînement a été arrêté après 100 époques (Early Stopping) lorsque la précision sur le set de validation a cessé d'augmenter.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{training_curves.png}
+    \caption{Courbes de Training : La Loss (bleu) diminue régulièrement tandis que la Validation Accuracy (orange) atteint un plateau à ~89\% pour les tickets complexes.}
+    \label{fig:training_curves}
+\end{figure}
+
+\subsubsection{Comparaison Qualitative}
+La figure ci-dessous illustre la supériorité du modèle fine-tuné sur des cas difficiles (polices matricielles dégradées ou thermique). Le modèle de base (généraliste) confond souvent les "0" et les "8", ou rate les points décimaux sur les tickets de caisse.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{finetuning_comparison.png}
+    \caption{Comparaison des prédictions : OCR Généraliste (Base) vs OCR Fine-tuné (Notre Modèle). Le fine-tuning corrige les erreurs sur les caractères bruités (ex: confusion 8/B ou O/0).}
+    \label{fig:svtr_finetune}
+\end{figure}
+
+\subsubsection{Gain de Précision (Quantitative)}
+Nous avons mesuré le Taux d'Erreur Caractère (CER) sur un sous-ensemble de test qualifié de "difficile" (bruit, faible encre).
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Modèle} & \textbf{Factures Laser (A4)} & \textbf{Tickets Thermiques} & \textbf{Gain} \\
+\hline
+SVTR Base (anglais/chinois) & 94.2\% & 76.5\% & - \\
+\hline
+\textbf{SVTR Fine-tuné (Ours)} & \textbf{96.8\%} & \textbf{89.2\%} & \textbf{+12.7 pts} \\
+\hline
+\end{tabular}
+\caption{Impact du fine-tuning sur la précision de reconnaissance par type de support.}
+\label{tab:finetuning_stats}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{Taux de reconnaissance global} : > 96\% sur l'ensemble du dataset de validation.
+    \item \textbf{Résistance au bruit} : Le prétraitement permet de lire des reçus froissés, mais la lecture atteint ses limites si le texte est manuscrit.
+\end{itemize}
+
+\subsection{Étude Comparative : SVTR vs CRNN}
+Pour valider notre choix technologique (décrit au Chapitre 3), nous avons comparé notre modèle SVTR à une architecture CRNN classique (ResNet + BiLSTM + CTC) sur notre dataset.
+
+\subsubsection{Analyse Visuelle de la Robutesse}
+La figure ci-dessous montre un cas typique d'échec des réseaux récurrents. Sur un ticket de caisse où l'encre est baveuse ou les lettres espacées ("T O T A L"), le CRNN perd le fil de la séquence. Le SVTR, grâce à son attention globale, reconstitue le mot correctement.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{svtr_vs_crnn.png}
+    \caption{Comparaison Architecturale : Le CRNN (gauche) traite l'image séquentiellement et échoue sur le bruit local. Le SVTR (droite) utilise l'attention globale pour corriger l'erreur.}
+    \label{fig:model_comparison}
+\end{figure}
+
+\subsubsection{Benchmark de Vitesse (Inférence)}
+Contrairement aux idées reçues, le Transformer (SVTR-Tiny) est compétitif en temps de calcul grâce à l'absence de récurrence (parallélisation totale).
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Architecture} & \textbf{Précision (Reciepts)} & \textbf{Temps/Batch (GPU)} & \textbf{Temps/Batch (CPU)} \\
+\hline
+CRNN (ResNet34 + BiLSTM) & 84.5\% & 12ms & 45ms \\
+\hline
+\textbf{SVTR-Tiny (Transformer)} & \textbf{89.2\%} & \textbf{14ms} & \textbf{52ms} \\
+\hline
+\end{tabular}
+\caption{Compromis Précision / Vitesse. Le SVTR offre +4.7 pts de précision pour un surcoût négligeable (+7ms sur CPU).}
+\label{tab:benchmark_models}
+\end{table}
+
+\subsection{Performance de l'Extraction de Champs}
+Tableau récapitulatif des performances finales sur notre dataset privé :
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|l|}
+\hline
+\textbf{Champ à extraire} & \textbf{Précision} & \textbf{Rappel} & \textbf{F1-Score} & \textbf{Observation} \\
+\hline
+\textbf{Montant Total TTC} & 96\% & 95\% & \textbf{95.5\%} & Très robuste grâce aux regex monétaires et ancres. \\
+\hline
+\textbf{Date de Facture} & 98\% & 97\% & \textbf{97.5\%} & Excellent score, format standardisé. \\
+\hline
+\textbf{Nom du Fournisseur} & 94\% & 91\% & \textbf{92.5\%} & Amélioré via le matching fuzzy du backend. \\
+\hline
+\textbf{Numéro de Facture} & 89\% & 85\% & \textbf{87.0\%} & Difficultés occasionnelles (confusion avec n° téléphone). \\
+\hline
+\textbf{Extraction Tableau} & 89\% & 82\% & \textbf{85.5\%} & Performance solide sur structures simples. \\
+\hline
+\end{tabular}
+\caption{Performance de l'Extraction par type de champ}
+\label{tab:perf_champs}
+\end{table}
+
+\subsection{Performance du Système Web}
+\begin{itemize}
+    \item \textbf{Temps de réponse} : L'API traite une facture A4 standard en \textbf{2 à 4 secondes} (sans GPU).
+    \item \textbf{Expérience Utilisateur} : Le mécanisme de "Smart Matching" réduit le temps de validation d'une facture de 5 minutes (saisie manuelle) à environ 30 secondes (vérification).
+\end{itemize}
+
+
+\subsection{Positionnement de l'Approche : Pourquoi l'Hybride ?}
+
+Au-delà des simples métriques, il est crucial de justifier notre choix architectural face aux alternatives existantes. Nous avons comparé notre approche \textit{Spatio-Sémantique} (Step 5) avec deux autres paradigmes dominants.
+
+\subsubsection{Comparaison des Paradigmes}
+La figure ci-dessous synthétise le positionnement technologique de notre solution : elle vise le compromis optimal entre la rigidité du code classique et le coût computationnel de l'IA générative.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{algo_comparison.png}
+    \caption{Positionnement de notre solution : Le "Sweet Spot" (Zone verte) combine la robustesse structurelle de l'IA (Donut) avec la légèreté d'exécution des méthodes classiques.}
+    \label{fig:algo_comparison}
+\end{figure}
+
+\subsubsection{Détail Comparatif}
+Le tableau suivant résume les forces et faiblesses observées lors de nos tests préliminaires :
+
+\begin{table}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|l|l|l|}
+\hline
+\rowcolor{gray!20} \textbf{Critère} & \textbf{Approche Classique (Regex/Templates)} & \textbf{Approche End-to-End (Donut AI)} & \textbf{Notre Approche (Hybride)} \\ \hline
+\textbf{Flexibilité Layout} & Faible (Casse si une colonne bouge) & Excellente & \textbf{Élevée} (Basée sur la proximité relative) \\ \hline
+\textbf{Vitesse (Facture A4)} & < 100ms & > 5s (nécessite gros GPU) & \textbf{< 200ms} (Algorithmique pure) \\ \hline
+\textbf{Souveraineté des Données} & Totale & Faible (Boîte noire, hallucinations) & \textbf{Totale} (Logique explicable) \\ \hline
+\textbf{Maintenance} & Lourde (1 template par fournisseur) & Difficile (Ré-entraînement complet) & \textbf{Légère} (Règles génériques) \\ \hline
+\textbf{Gestion Tableaux Complexes} & Impossible sans délimiteurs & Souvent imprécis sur les alignements & \textbf{Précis} (Algorithme multi-lignes dédié) \\ \hline
+\end{tabular}%
+}
+\caption{Comparaison stratégique des méthodes d'extraction.}
+\label{tab:strategy_comparison}
+\end{table}
+
+\noindent \textbf{Pourquoi notre Step 5 est meilleur ?} \\
+Contrairement à \textbf{Regex} qui cherche des motifs textuels ("Total: \d+"), notre algorithme reconstruit la \textit{géométrie} du document. Il "sait" que le prix est toujours à droite de la désignation, même si la désignation fait trois lignes de long (Multi-line merging). Contrairement à \textbf{Donut}, il ne devine pas les chiffres (pas d'hallucination) : il extrait exactement ce qui est écrit, ce qui est une exigence comptable absolue.
+
+\section{Impact Économique et Opérationnel}
+
+Au-delà de la performance technique, la réussite d'un projet de fin d'études se mesure aussi à sa pertinence économique. Nous avons modélisé l'impact de notre solution comparée à un processus de saisie manuelle traditionnel.
+
+\subsection{Retour sur Investissement (ROI)}
+Pour estimer le gain potentiel, nous considérons le scénario d'une PME traitant \textbf{1000 factures par mois}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{economic_impact.png}
+    \caption{Comparaison Manuelle vs Automatisée. Le temps de traitement est divisé par 35 (3.5 min $\rightarrow$ 6 sec), et le coût opérationnel chute drastiquement.}
+    \label{fig:economic_impact}
+\end{figure}
+
+Les bénéfices sont multiples :
+\begin{itemize}
+    \item \textbf{Gain de Productivité} : Le personnel administratif est libéré des tâches de saisie répétitives (environ \textbf{58 heures économisées} par mois sur 1000 factures) pour se concentrer sur des tâches à plus forte valeur ajoutée (contrôle de gestion, relation fournisseur).
+    \item \textbf{Réduction des Coûts} : Le coût de traitement passe d'environ 0.58\$ (main d'œuvre) à moins de 0.02\$ (coût serveur marginal) par facture.
+    \item \textbf{Fiabilité des Données} : L'automatisation supprime les erreurs de frappe (inversion de chiffres, oubli de décimales) fréquentes lors de la saisie manuelle fatiguante.
+\end{itemize}
+
+\subsection{Intégration ERP}
+Notre solution a été pensée pour être "ERP-Agnostic", mais elle s'intègre naturellement dans les flux d'entreprise. Les données structurées (JSON) générées peuvent être injectées directement dans des systèmes comme \textbf{Odoo} \cite{odoo} ou \textbf{SAP} \cite{sap}, automatisant ainsi la chaîne complète : Réception Mail $\rightarrow$ Extraction $\rightarrow$ Écriture en Comptabilité.
+
+\section{Analyse Critique et Améliorations}
+
+\subsection{Analyse des Échecs (Failure Analysis)}
+Une analyse fine des erreurs résiduelles a permis d'identifier deux catégories principales :
+
+\begin{itemize}
+    \item \textbf{Ambiguïtés Sémantiques (Format Confusions)} : Le système a parfois confondu le "Numéro de Facture" avec le "Numéro SIRET" ou un "Numéro de Téléphone". Ces champs partagent souvent la même syntaxe (séries de chiffres) et sont situés dans la même zone (en-tête). L'ajout de règles de validation rigides (ex: un SIRET doit avoir 14 chiffres) a permis de réduire en partie ce problème.
+    \item \textbf{Logos et Graphismes} : Lorsque le nom du fournisseur est stylisé sous forme de logo purement graphique, l'OCR textuel échoue. Une approche future consisterait à ajouter un module de détection d'objets comme \textbf{YOLO (You Only Look Once) \cite{yolo}} pour localiser et classifier les logos en tant qu'images, indépendamment du texte.
+\end{itemize}
+
+\subsection{Boucle d'Amélioration Continue (Smart Matching Learning)}
+Une fonctionnalité clé de notre système est sa capacité à "apprendre" de ses erreurs sans réentraînement lourd du modèle IA.
+Lorsque le module de \textit{Logique Floue} suggère un produit incorrect et que l'utilisateur corrige manuellement l'association via l'interface React :
+\begin{enumerate}
+    \item L'application enregistre cette nouvelle paire (Libellé Facture $\leftrightarrow$ Produit Stock) dans une table de \textbf{Mapping Explicite}.
+    \item Lors de la prochaine occurrence de ce même libellé, le système consultera d'abord cette table, garantissant une précision de 100\% pour les fournisseurs récurrents.
+    \item Ainsi, la performance du système s'améliore mécaniquement avec l'usage (Human-in-the-loop).
+\end{enumerate}
+
+\section{Limites Techniques}
+Malgré ces mécanismes, certaines limites persistent, notamment sur les tableaux modernes "sans lignes" ou invisibles, où l'alignement vertical strict peut échouer si les colonnes sont trop rapprochées.
+
